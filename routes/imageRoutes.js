@@ -16,24 +16,26 @@ const storage = multer.diskStorage({
     cb(null, "uploads/");
   },
   filename: function (req, file, cb) {
-    // Extract the original file extension (e.g., .jpg, .png, etc.)
-    const extension = path.extname(file.originalname); // Get the file extension
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    cb(null, file.fieldname + "-" + uniqueSuffix + extension); // Append the extension to the unique filename
+    const extension = path.extname(file.originalname);
+    const uniqueSuffix = Date.now();
+    cb(null, file.fieldname + "-" + uniqueSuffix + extension);
   },
 });
 const upload = multer({ storage });
 
-router.post("/upload", upload.single("file"), async (req, res) => {
+router.post("/upload", upload.single("image"), async (req, res) => {
   try {
     console.log(req.body);
     console.log(req.file, "req.file");
     if (!req.file) {
-      return res.status(400).json({ msg: "No file uploaded" });
+      return res.status(400).json({ msg: "Image file is required" });
     }
     const { description } = req.body;
+    if (!description) {
+      return res.status(400).json({ message: "Description is required" });
+    }
     const newImage = new Image({
-      filename: req.file.filename,
+      imageUrl: req.file.filename,
       description,
     });
     await newImage.save();
@@ -42,25 +44,85 @@ router.post("/upload", upload.single("file"), async (req, res) => {
     }`; // Construct the URL to access the image
     res.status(201).json({ file: req.file, description, imageUrl });
   } catch (error) {
-    res.status(500).json({
-      msg: "Failed",
-      error,
-    });
+    res.status(500).json({ message: error.message });
   }
 });
 
+router.put("/upload/:id", upload.single("image"), async (req, res, next) => {
+  try {
+    const { description } = req.body;
+    const { id } = req.params;
+
+    const image = await Image.findById(id);
+    if (!image) {
+      return res.status(404).json({ message: "Image not found" });
+    }
+    if (description) image.description = description;
+    if (req.file) {
+      const oldPath = path.join(__dirname, "../uploads", image.imageUrl);
+      fs.unlink(oldPath, (err) => {
+        if (err) console.error("Failed to delete old image:", err);
+      });
+
+      image.imageUrl = req.file.filename;
+    }
+
+    const updateImage = await image.save();
+    res.status(200).json(updateImage);
+  } catch (error) {
+    next(error);
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get("/upload", async (req, res) => {
+  try {
+    let image;
+    image = await Image.find().sort({ createdAt: -1 });
+    if (!image) {
+      return res.status(404).json({ message: "Image not found" });
+    }
+    res.status(200).json(image);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+router.get("/upload/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    let image;
+    image = await Image.findById(id);
+    if (!image) {
+      return res.status(404).json({ message: "Image not found" });
+    }
+    res.status(200).json(image);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.delete("/upload/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const image = await Image.findByIdAndDelete(id);
+    if (!image) {
+      return res.status(404).json({ message: "Image not found" });
+    }
+
+    const imagePath = path.join(
+      __dirname,
+      "../uploads",
+      path.basename(image.imageUrl)
+    );
+    console.log(imagePath,"imagePath")
+    fs.unlink(imagePath, (err) => {
+      if (err) {
+        console.error("Failed to delete image file:", err);
+      }
+    });
+    res.status(200).json({ message: "Image deleted successfully" });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
 module.exports = router;
-
-// const upload = multer({
-//     storage,
-//     fileFilter: (req, file, cb) => {
-//       const filetypes = /jpeg|jpg|png|gif/; // Allowed file extensions
-//       const mimetype = filetypes.test(file.mimetype); // Check MIME type
-//       const extname = filetypes.test(path.extname(file.originalname).toLowerCase()); // Check file extension
-
-//       if (mimetype && extname) {
-//         return cb(null, true); // Accept file
-//       }
-//       cb(new Error('Only images are allowed!')); // Reject file if not an image
-//     }
-//   });
