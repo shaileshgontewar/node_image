@@ -1,4 +1,4 @@
-// middleware/multerErrorHandler.js
+
 const multer = require("multer");
 
 const multerErrorHandler = (err, req, res, next) => {

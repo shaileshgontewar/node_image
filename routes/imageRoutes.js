@@ -3,6 +3,7 @@ const fs = require("fs");
 const multer = require("multer");
 const path = require("path");
 const Image = require("../models/Image");
+const validateObjectId = require("../middleware/validateObjectId");
 const router = express.Router();
 
 const uploadsDir = path.join(__dirname, "../uploads");
@@ -87,7 +88,7 @@ router.get("/upload", async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
-router.get("/upload/:id", async (req, res) => {
+router.get("/upload/:id", validateObjectId, async (req, res) => {
   try {
     const { id } = req.params;
     let image;
@@ -114,7 +115,7 @@ router.delete("/upload/:id", async (req, res) => {
       "../uploads",
       path.basename(image.imageUrl)
     );
-    console.log(imagePath,"imagePath")
+    console.log(imagePath, "imagePath");
     fs.unlink(imagePath, (err) => {
       if (err) {
         console.error("Failed to delete image file:", err);
@@ -125,4 +126,32 @@ router.delete("/upload/:id", async (req, res) => {
     res.status(500).json({ message: error.message });
   }
 });
+
+router.post(
+  "/multiple-upload",
+  upload.array("images", 10),
+  async (req, res) => {
+    try {
+      const { description } = req.body;
+      if (!description) {
+        return res.status(400).json({ message: "Description is required" });
+      }
+      if (!req.files || req.files.length === 0) {
+        return res
+          .status(400)
+          .json({ msg: "At least one image file is required" });
+      }
+      const imageData = req.files.map((file) => ({
+        description,
+        imageUrl: file.filename,
+      }));
+
+      const saveImage = await Image.insertMany(imageData);
+      res.status(201).json(saveImage);
+    } catch (error) {
+      res.status(500).json({ message: error.message });
+    }
+  }
+);
+
 module.exports = router;
